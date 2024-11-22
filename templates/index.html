@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador de QR Code</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Gerador de QR Code</h1>
+
+        <form id="form-gerar-qrcode">
+            <label for="nome_caixa">Nome da Caixa:</label>
+            <input type="text" id="nome_caixa" name="nome_caixa" required><br><br>
+
+            <label for="numero_nota">Número da Nota Fiscal:</label>
+            <input type="text" id="numero_nota" name="numero_nota" required><br><br>
+
+            <label for="conteudo">Conteúdo da Caixa:</label><br>
+            <textarea id="conteudo" name="conteudo" required></textarea><br><br>
+
+            <button type="submit">Gerar e Enviar QR Code</button>
+            <button type="button" id="btn-ler-codigo">Ler Código de Barras</button>
+        </form>
+
+        <div id="mensagem" style="display:none;"></div>
+
+        <!-- Container do Scanner -->
+        <div id="scanner-container" style="display:none;">
+            <h3>Escaneie o Código de Barras</h3>
+            <div id="scanner" style="width: 100%; height: 300px;"></div>
+            <button onclick="stopScanner()">Parar Leitura</button>
+        </div>
+    </div>
+
+    <script>
+        // Função para iniciar a leitura do código de barras
+        document.getElementById('btn-ler-codigo').addEventListener('click', function() {
+            // Mostrar a área do scanner e esconder o formulário
+            document.getElementById('form-gerar-qrcode').style.display = 'none';
+            document.getElementById('scanner-container').style.display = 'block';
+
+            // Obter os dispositivos de mídia disponíveis (câmeras)
+            navigator.mediaDevices.enumerateDevices().then(function(devices) {
+                // Filtrar apenas dispositivos de vídeo (câmeras)
+                const videoDevices = devices.filter(function(device) {
+                    return device.kind === 'videoinput';
+                });
+
+                // Verificar se temos câmeras disponíveis
+                if (videoDevices.length === 0) {
+                    console.error('Nenhuma câmera encontrada!');
+                    alert('Nenhuma câmera encontrada!');
+                    return;
+                }
+
+                // Tentar usar a câmera traseira (facingMode: "environment")
+                const constraints = {
+                    video: {
+                        facingMode: "environment" // Preferir a câmera traseira
+                    }
+                };
+
+                // Iniciar o scanner com as configurações de câmera
+                Quagga.init({
+                    inputStream: {
+                        name: "Live",
+                        type: "LiveStream",
+                        target: document.querySelector('#scanner'),
+                        constraints: constraints
+                    },
+                    decoder: {
+                        readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "isbn_reader"]
+                    }
+                }, function(err) {
+                    if (err) {
+                        console.error("Erro ao inicializar o Quagga: ", err);
+                        alert("Erro ao inicializar o scanner.");
+                        return;
+                    }
+                    // Iniciar o scanner
+                    Quagga.start();
+                });
+
+                // Quando um código for detectado, preenche o campo "conteudo"
+                Quagga.onDetected(function(result) {
+                    const codigoLido = result.codeResult.code;
+                    document.getElementById('conteudo').value = codigoLido;
+                    stopScanner(); // Parar o scanner após ler o código
+                });
+            }).catch(function(err) {
+                console.error("Erro ao acessar dispositivos de mídia: ", err);
+                alert("Erro ao acessar a câmera.");
+            });
+        });
+
+        // Função para parar a leitura do código de barras
+        function stopScanner() {
+            Quagga.stop();
+            document.getElementById('scanner-container').style.display = 'none';
+            document.getElementById('form-gerar-qrcode').style.display = 'block';
+        }
+
+        // Submissão do formulário
+        document.getElementById('form-gerar-qrcode').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            let nome_caixa = document.getElementById('nome_caixa').value;
+            let numero_nota = document.getElementById('numero_nota').value;
+            let conteudo = document.getElementById('conteudo').value;
+
+            fetch('/gerar_qr', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `nome_caixa=${nome_caixa}&numero_nota=${numero_nota}&conteudo=${conteudo}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                let mensagemDiv = document.getElementById('mensagem');
+                if (data.status === 'sucesso') {
+                    mensagemDiv.style.color = 'green';
+                } else {
+                    mensagemDiv.style.color = 'red';
+                }
+                mensagemDiv.innerHTML = data.mensagem;
+                mensagemDiv.style.display = 'block';
+            })
+            .catch(error => {
+                console.error('Erro:', error);
+            });
+        });
+    </script>
+</body>
+</html>
